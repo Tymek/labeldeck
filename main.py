@@ -1,71 +1,86 @@
-import io
+#!/usr/bin/env python3
+"""
+Label Printer with OLED Display
+Interactive name entry and label printing system for Raspberry Pi Zero with OLED display.
+"""
+
 import os
+import sys
+import time
 import subprocess
-from flask import Flask, render_template, request, Response, redirect, url_for
-from urllib.parse import quote
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from typing import Optional
-from typing import Dict, Tuple, List
+import io
+
+# Try to import OLED display functionality
+try:
+    from oled_display import initialize_oled, get_oled
+    OLED_AVAILABLE = True
+except ImportError as e:
+    print(f"OLED display not available: {e}")
+    OLED_AVAILABLE = False
 
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-def _list_fonts() -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
-    """Return (key->path map, list of (key, label)) for bundled fonts.
-    Only files within static/fonts are exposed to avoid arbitrary paths.
-    """
-    fonts_dir = os.path.join(app.static_folder, "fonts")
-    key_to_path: Dict[str, str] = {}
-    items: List[Tuple[str, str]] = []
-    if os.path.isdir(fonts_dir):
-        for name in sorted(os.listdir(fonts_dir)):
-            if name.lower().endswith((".ttf", ".otf")):
-                key = os.path.splitext(name)[0]
-                path = os.path.join(fonts_dir, name)
-                key_to_path[key] = path
-                # Make a nicer label
-                label = key.replace("_", " ").replace("-", " ")
-                items.append((key, label))
-    return key_to_path, items
-
-
-def _resolve_font_path(key: Optional[str]) -> Optional[str]:
-    if not key:
-        return None
-    key_to_path, _ = _list_fonts()
-    return key_to_path.get(key)
-
-
-def _find_font_by_prefix(prefixes: List[str]) -> Optional[str]:
-    fonts_dir = os.path.join(app.static_folder, "fonts")
-    if not os.path.isdir(fonts_dir):
-        return None
-    matches: List[str] = []
-    for name in os.listdir(fonts_dir):
-        low = name.lower()
-        if not low.endswith((".ttf", ".otf")):
-            continue
-        if any(low.startswith(p.lower()) for p in prefixes):
-            matches.append(name)
-    if not matches:
-        return None
-    matches.sort(key=lambda n: (0 if "regular" in n.lower() else 1, n.lower()))
-    return os.path.join(fonts_dir, matches[0])
-
-
-
-class Renderer:
+class LabelRenderer:
+    """Renders labels for printing."""
+    
     MM_TO_IN = 0.0393701
     DPI = 300
 
     def __init__(self, size_mm=(36, 89)):
+        """Initialize renderer with label size in millimeters."""
         w_px = int(size_mm[1] * self.MM_TO_IN * self.DPI)
         h_px = int(size_mm[0] * self.MM_TO_IN * self.DPI)
         self.size = (w_px, h_px)
         self.img = Image.new("RGB", self.size, color="white")
         self.draw = ImageDraw.Draw(self.img)
 
+    def _find_font(self, prefixes=None, size=20):
+        """Find and load a suitable font."""
+        if prefixes is None:
+            prefixes = ["ubuntu", "dejavu", "liberation"]
+        
+        candidates = []
+        
+        # Static fonts from project
+        static_fonts = "static/fonts"
+        if os.path.exists(static_fonts):
+            for name in os.listdir(static_fonts):
+                if name.lower().endswith((".ttf", ".otf")):
+                    candidates.append(os.path.join(static_fonts, name))
+        
+        # System fonts
+        system_font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        ]
+        candidates.extend(system_font_paths)
+        
+        # Find best match
+        for prefix in prefixes:
+            for path in candidates:
+                if prefix.lower() in os.path.basename(path).lower():
+                    try:
+                        return ImageFont.truetype(path, size)
+                    except (OSError, IOError):
+                        continue
+        
+        # Try any available font
+        for path in candidates:
+            try:
+                if os.path.exists(path):
+                    return ImageFont.truetype(path, size)
+            except (OSError, IOError):
+                continue
+        
+        # Fallback to default font
+        return ImageFont.load_default()
+
     def _wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int):
+        """Wrap text to fit within max_width."""
         lines = []
         for paragraph in text.split("\n"):
             words = paragraph.split(" ")
@@ -78,225 +93,277 @@ class Renderer:
                     if line:
                         lines.append(line)
                     line = word
-            lines.append(line)
+            if line:
+                lines.append(line)
         return lines
 
-    def render_text_center(self, text: str, font_size: int, font_path: Optional[str] = None):
-        try:
-            candidates = []
-            if font_path:
-                candidates.append(font_path)
-            try:
-                static_fonts = os.path.join(app.static_folder, "fonts")
-            except Exception:
-                static_fonts = None
-            if static_fonts:
-                candidates.append(os.path.join(static_fonts, "LabelSans.ttf"))
-                candidates.append(os.path.join(static_fonts, "DejaVuSans.ttf"))
-            candidates.append("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-
-            chosen = None
-            for c in candidates:
-                if c and os.path.exists(c):
-                    chosen = c
-                    break
-            if chosen:
-                font = ImageFont.truetype(chosen, font_size)
-            else:
-                font = ImageFont.load_default()
-        except Exception:
-            font = ImageFont.load_default()
-
+    def render_name_label(self, name: str, font_size: int = 48):
+        """Render a name label."""
+        font = self._find_font(["ubuntu", "dejavu"], font_size)
+        
+        # Clear the image
+        self.draw.rectangle([(0, 0), self.size], fill="white")
+        
         padding = int(self.size[0] * 0.04)
-        lines = self._wrap_text(text, font, self.size[0] - padding * 2)
+        lines = self._wrap_text(name, font, self.size[0] - padding * 2)
 
+        # Calculate total height
         line_heights = []
         for ln in lines:
             bbox = self.draw.textbbox((0, 0), ln, font=font)
             line_heights.append(bbox[3] - bbox[1])
-        total_h = sum(line_heights) + (len(lines) - 1) * int(font_size * 0.15)
+        
+        line_spacing = int(font_size * 0.15)
+        total_h = sum(line_heights) + (len(lines) - 1) * line_spacing
 
+        # Center vertically
         y = (self.size[1] - total_h) // 2 - 25
+        
+        # Draw each line centered horizontally
         for i, ln in enumerate(lines):
             w = int(self.draw.textlength(ln, font=font))
             x = (self.size[0] - w) // 2
             self.draw.text((x, y), ln, fill="black", font=font)
-            y += line_heights[i] + int(font_size * 0.15)
+            y += line_heights[i] + line_spacing
+
+        # Add timestamp in corner
+        self._add_timestamp()
+
+    def _add_timestamp(self):
+        """Add timestamp to the label."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        font = self._find_font(["b612", "dejavu"], 16)
+        
+        # Position in bottom right
+        bbox = self.draw.textbbox((0, 0), timestamp, font=font)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        
+        x = self.size[0] - w - 10
+        y = self.size[1] - h - 10
+        
+        self.draw.text((x, y), timestamp, fill="black", font=font)
 
     def to_png_bytes(self) -> bytes:
+        """Convert rendered image to PNG bytes."""
         buf = io.BytesIO()
         self.img.save(buf, format="PNG")
         return buf.getvalue()
 
-    def render_time_vertical(self, font_path: Optional[str] = None, font_size: int = 24, side: str = "right", offset_lines: int = 2):
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-        try:
-            if font_path and os.path.exists(font_path):
-                font = ImageFont.truetype(font_path, font_size)
-            else:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-        except Exception:
-            font = ImageFont.load_default()
-
-        # Measure with potential negative bearings
-        tmp = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
-        dr = ImageDraw.Draw(tmp)
-        bbox = dr.textbbox((0, 0), ts, font=font)
-        w = max(1, bbox[2] - bbox[0])
-        h = max(1, bbox[3] - bbox[1])
-        pad = max(4, (font_size + 1) // 3)
-
-        # Draw onto padded surface compensating for negative bbox origin
-        txt = Image.new("RGBA", (w + pad * 2, h + pad * 2), (255, 255, 255, 0))
-        dr2 = ImageDraw.Draw(txt)
-        dr2.text((pad - bbox[0], pad - bbox[1]), ts, fill=(0, 0, 0, 255), font=font)
-
-        # Rotate and crop to content to avoid any residual transparent borders
-        rot = txt.rotate(90, expand=True)
-        crop_box = rot.getbbox()
-        if crop_box:
-            rot = rot.crop(crop_box)
-
-        margin = max(6, int(self.size[0] * 0.01))
-        extra = max(0, offset_lines * font_size)  # shift left by N line-heights
-        if side == "left":
-            x = max(margin, margin + extra)
-        else:
-            x = max(margin, self.size[0] - rot.width - margin - extra)
-        y = (self.size[1] - rot.height) // 2
-        self.img.paste(rot, (x, y), rot)
+    def save_png(self, path: str):
+        """Save rendered image as PNG file."""
+        self.img.save(path, format="PNG")
 
 
-@app.route("/")
-def index():
-    text = request.args.get("text", "")
-    try:
-        size = int(request.args.get("size", "144") or "144")
-    except ValueError:
-        size = 56
-    query = f"?text={quote(text or '')}"
-    preview_url = url_for("api_preview", size=size) + query
-    status = request.args.get("status", "")
-    return render_template(
-        "index.html",
-        text=text,
-        size=size,
-        preview_url=preview_url,
-        status=status,
-    )
-
-@app.get("/api/preview/<int:size>/")
-def api_preview(size: int):
-    text = request.args.get("text", "").strip()
-    # Default fonts: Ubuntu for main, B612 for timestamp
-    font_path = _find_font_by_prefix(["ubuntu"]) or _resolve_font_path(None)
-    time_font_path = _find_font_by_prefix(["b612"]) or font_path
-    r = Renderer()
-    r.render_text_center(text or "", size, font_path=font_path)
-    r.render_time_vertical(font_path=time_font_path, font_size=24, side="right")
-    png = r.to_png_bytes()
-    return Response(png, mimetype="image/png")
-
-
-def _print_via_lp(png_bytes: bytes) -> tuple[int, str]:
+def print_label(png_bytes: bytes, copies: int = 1) -> tuple[int, str]:
+    """Print label using CUPS via lp command."""
     tmp_path = "/tmp/pilabel.png"
-    with open(tmp_path, "wb") as f:
-        f.write(png_bytes)
-    printer = os.environ.get("PRINTER", os.environ.get("PILABEL_PRINTER", "dymo450"))
-    media = os.environ.get("PILABEL_MEDIA", "w102h252")  # 36x89mm ≈ 102x252pt
-    copies = int(os.environ.get("PILABEL_COPIES", "2") or "2")
-
-    img_list = [tmp_path] * max(1, copies)
-    convert_args = [
-        "convert",
-        *img_list,
-        "-units",
-        "PixelsPerInch",
-        "-density",
-        "300",
-        "-compress",
-        "zip",
-        "pdf:-",
-    ]
-    lp_args = [
-        "lp",
-        "-d",
-        printer,
-        "-o",
-        f"PageSize={media}",
-        "-o",
-        "Resolution=300dpi",
-        "-o",
-        "DymoPrintQuality=Text",
-        "-o",
-        "fit-to-page",
-        "-t",
-        "label.pdf",
-    ]
+    
     try:
+        # Save PNG to temporary file
+        with open(tmp_path, "wb") as f:
+            f.write(png_bytes)
+        
+        # Get printer configuration from environment
+        printer = os.environ.get("PRINTER", os.environ.get("PILABEL_PRINTER", "dymo450"))
+        media = os.environ.get("PILABEL_MEDIA", "w102h252")  # 36x89mm ≈ 102x252pt
+        
+        # Create list of images for copies
+        img_list = [tmp_path] * max(1, copies)
+        
+        # Convert to PDF with ImageMagick
+        convert_args = [
+            "convert",
+            *img_list,
+            "-units", "PixelsPerInch",
+            "-density", "300",
+            "-compress", "zip",
+            "pdf:-",
+        ]
+        
+        # Print with lp
+        lp_args = [
+            "lp",
+            "-d", printer,
+            "-o", f"PageSize={media}",
+            "-o", "Resolution=300dpi",
+            "-o", "DymoPrintQuality=Text",
+            "-o", "fit-to-page",
+            "-t", "label.pdf",
+        ]
+        
+        # Execute print pipeline
         p1 = subprocess.Popen(convert_args, stdout=subprocess.PIPE)
         proc = subprocess.run(lp_args, stdin=p1.stdout, capture_output=True, check=False)
+        
         if p1.stdout:
             p1.stdout.close()
         p1.wait()
-        try:
-            stdout = (proc.stdout.decode("utf-8", errors="ignore") if isinstance(proc.stdout, (bytes, bytearray)) else (proc.stdout or ""))
-            stderr = (proc.stderr.decode("utf-8", errors="ignore") if isinstance(proc.stderr, (bytes, bytearray)) else (proc.stderr or ""))
-            print(
-                "convert args: "
-                + " ".join(convert_args)
-                + "\nlp args: "
-                + " ".join(lp_args)
-                + f"\nstdout: {stdout.strip()}\nstderr: {stderr.strip()}"
-            )
-        except Exception:
-            stdout = ""
-            stderr = ""
-        out = (stdout or "") + (stderr or "")
-        return proc.returncode, out
+        
+        # Get output for debugging
+        stdout = proc.stdout.decode("utf-8", errors="ignore") if proc.stdout else ""
+        stderr = proc.stderr.decode("utf-8", errors="ignore") if proc.stderr else ""
+        
+        output = (stdout + stderr).strip()
+        
+        print(f"Print command executed:")
+        print(f"Convert: {' '.join(convert_args)}")
+        print(f"LP: {' '.join(lp_args)}")
+        print(f"Output: {output}")
+        
+        return proc.returncode, output
+        
+    except Exception as e:
+        return 1, str(e)
+    
     finally:
+        # Clean up temporary file
         try:
             os.remove(tmp_path)
         except Exception:
             pass
 
 
-# Remote print support removed; always use local CUPS via lp.
+class LabelPrinterApp:
+    """Main application for interactive label printing."""
+    
+    def __init__(self):
+        self.oled = None
+        self.renderer = LabelRenderer()
+        
+        # Initialize OLED display
+        if OLED_AVAILABLE:
+            try:
+                self.oled = initialize_oled()
+                if self.oled and self.oled.is_available():
+                    print("OLED display initialized successfully")
+                    self.oled.display_status("Label Printer", "Starting up...", "Please wait")
+                    time.sleep(2)
+                else:
+                    print("OLED display not available")
+                    self.oled = None
+            except Exception as e:
+                print(f"Failed to initialize OLED: {e}")
+                self.oled = None
+        else:
+            print("OLED support not available")
 
+    def display_message(self, message: str, line2: str = "", line3: str = ""):
+        """Display message on OLED if available, otherwise print."""
+        if self.oled and self.oled.is_available():
+            lines = [message]
+            if line2:
+                lines.append(line2)
+            if line3:
+                lines.append(line3)
+            self.oled.display_multiline_text(lines)
+        else:
+            print(message)
+            if line2:
+                print(line2)
+            if line3:
+                print(line3)
 
-@app.get("/printed")
-def printed():
-    return render_template("printed.html")
+    def display_status(self, title: str, status: str, info: str = ""):
+        """Display status on OLED if available."""
+        if self.oled and self.oled.is_available():
+            self.oled.display_status(title, status, info)
+        else:
+            print(f"{title}: {status}")
+            if info:
+                print(f"  {info}")
 
+    def get_name_input(self) -> str:
+        """Get name input from user."""
+        self.display_message("Enter name:", "Type name and", "press Enter:")
+        
+        try:
+            name = input().strip()
+            return name
+        except (EOFError, KeyboardInterrupt):
+            return ""
 
-@app.post("/print")
-def print_form():
-    text = request.form.get("text", "").strip()
-    try:
-        size = int(request.form.get("size", "144") or "144")
-    except ValueError:
-        size = 56
-    font_path = _find_font_by_prefix(["ubuntu"]) or _resolve_font_path(None)
-    time_font_path = _find_font_by_prefix(["b612"]) or font_path
+    def preview_on_oled(self, name: str):
+        """Preview the name on OLED display."""
+        if self.oled and self.oled.is_available():
+            self.display_status("Preview:", name, "Press Enter to print")
+        else:
+            print(f"Preview: {name}")
+            print("Press Enter to print 2 copies")
 
-    r = Renderer()
-    r.render_text_center(text or "", size, font_path=font_path)
-    r.render_time_vertical(font_path=time_font_path, font_size=24, side="right")
-    png = r.to_png_bytes()
-
-    code, out = _print_via_lp(png)
-
-    success = (code == 0)
-    status = "Printed" if success else f"Print failed ({code}): {(out or '').splitlines()[0]}"
-    try:
-        print(f"print_form: size={size}, font_main={os.path.basename(font_path) if font_path else 'auto'}, font_time={os.path.basename(time_font_path) if time_font_path else 'auto'}, bytes={len(png)}, exit={code}, msg={(out or '').strip()[:200]}")
-    except Exception:
-        pass
-    return redirect(url_for("printed"))
+    def run_interactive_loop(self):
+        """Run the main interactive loop."""
+        print("Label Printer with OLED Display")
+        print("=" * 40)
+        
+        self.display_status("Label Printer", "Ready", "Type name + Enter")
+        
+        while True:
+            try:
+                # Get name input
+                name = self.get_name_input()
+                
+                if not name:
+                    self.display_message("No name entered", "Try again...")
+                    time.sleep(2)
+                    self.display_status("Label Printer", "Ready", "Type name + Enter")
+                    continue
+                
+                # Show preview
+                self.preview_on_oled(name)
+                
+                # Wait for Enter to print
+                print(f"Preview: '{name}'")
+                print("Press Enter to print 2 copies (or Ctrl+C to cancel):")
+                
+                try:
+                    input()  # Wait for Enter
+                except KeyboardInterrupt:
+                    self.display_message("Cancelled", "Back to main menu")
+                    time.sleep(1)
+                    continue
+                
+                # Render and print label
+                self.display_status("Printing...", name, "Please wait")
+                
+                # Render the label
+                self.renderer.render_name_label(name)
+                png_bytes = self.renderer.to_png_bytes()
+                
+                # Print 2 copies
+                return_code, output = print_label(png_bytes, copies=2)
+                
+                if return_code == 0:
+                    self.display_status("Print Success!", name, "2 copies sent")
+                    print("✓ Label printed successfully!")
+                else:
+                    self.display_status("Print Failed", "Check printer", output[:15])
+                    print(f"✗ Print failed: {output}")
+                
+                time.sleep(3)
+                self.display_status("Label Printer", "Ready", "Type name + Enter")
+                
+            except KeyboardInterrupt:
+                print("\nShutting down...")
+                if self.oled and self.oled.is_available():
+                    self.oled.display_status("Label Printer", "Goodbye!", "")
+                    time.sleep(2)
+                    self.oled.clear()
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+                self.display_status("Error", str(e)[:12], "Try again")
+                time.sleep(3)
 
 
 def main():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
+    """Main entry point."""
+    try:
+        app = LabelPrinterApp()
+        app.run_interactive_loop()
+    except Exception as e:
+        print(f"Failed to start application: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

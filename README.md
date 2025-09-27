@@ -21,12 +21,20 @@ Setup for Raspberry Pi Zero
 
 ```bash
 sudo apt-get install -y git
-git clone https://github.com/Tymek/labeldeck.git /tmp/app
-sudo mkdir /app && sudo chown -R "$USER:$USER" /app && sudo mv /tmp/app/* /app/ && cd /app
+sudo git clone https://github.com/Tymek/labeldeck.git /app
+sudo chown -R "$USER:$USER" /app
+cd /app
 ```
 
 4. Install dependencies
 
 ```bash
 ./setup.sh
+```
+
+5. Optionally, adjust environment variables
+```
+PRINTER=your_printer_name
+PILABEL_MEDIA=w102h252  # for 36x89mm labels
+OLED_I2C_ADDRESS=0x3c   # OLED I2C address (default: 0x3c)
 ```

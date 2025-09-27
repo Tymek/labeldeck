@@ -1,3 +1,5 @@
 flask
 pillow
 requests
+luma.oled
+RPi.GPIO
