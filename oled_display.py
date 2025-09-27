@@ -45,24 +45,62 @@ class OLEDDisplay:
             self.device = None
     
     def _load_font(self, size: int = 10) -> ImageFont.FreeTypeFont:
-        """Load a font for the display."""
+        """Load a font for the display with Polish character support."""
         try:
-            # Try to load bundled fonts first
+            # Priority order: Ubuntu fonts first since they worked via SSH
             font_paths = [
-                "static/fonts/B612Mono-Regular.ttf",
+                # Project bundled fonts (check these first)
                 "static/fonts/Ubuntu-MediumItalic.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf"
+                "static/fonts/B612Mono-Regular.ttf",
+                # Ubuntu system fonts (prioritized since they worked)
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf",
+                # DejaVu fonts (good Unicode support as backup)
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                # Liberation fonts (good fallback)
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+                # More fallbacks
+                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "/System/Library/Fonts/Arial.ttf",  # macOS
+                "/Windows/Fonts/arial.ttf",  # Windows
             ]
             
             for path in font_paths:
                 try:
                     if os.path.exists(path):
+                        font = ImageFont.truetype(path, size)
+                        # Test if font supports Polish characters
+                        test_chars = "ąćęłńóśźż"
+                        try:
+                            # Try to render Polish characters to verify support
+                            from PIL import Image, ImageDraw
+                            test_img = Image.new("RGB", (10, 10), "white")
+                            test_draw = ImageDraw.Draw(test_img)
+                            test_draw.text((0, 0), test_chars, font=font, fill="black")
+                            print(f"Using font: {os.path.basename(path)} (supports Polish)")
+                            return font
+                        except Exception:
+                            # Font doesn't support these characters, try next
+                            continue
+                except (OSError, IOError):
+                    continue
+            
+            # If no font with Polish support found, try any available font
+            print("Warning: No font with Polish character support found, using fallback")
+            for path in font_paths:
+                try:
+                    if os.path.exists(path):
+                        print(f"Using fallback font: {os.path.basename(path)}")
                         return ImageFont.truetype(path, size)
                 except (OSError, IOError):
                     continue
             
             # Fallback to default font
+            print("Using PIL default font (limited character support)")
             return ImageFont.load_default()
             
         except Exception:

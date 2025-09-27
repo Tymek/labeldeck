@@ -42,9 +42,9 @@ class LabelRenderer:
         self.draw = ImageDraw.Draw(self.img)
 
     def _find_font(self, prefixes=None, size=20):
-        """Find and load a suitable font."""
+        """Find and load a suitable font with Polish character support."""
         if prefixes is None:
-            prefixes = ["ubuntu", "dejavu", "liberation"]
+            prefixes = ["ubuntu", "dejavu", "liberation"]  # Ubuntu first since it worked via SSH
         
         candidates = []
         
@@ -55,33 +55,62 @@ class LabelRenderer:
                 if name.lower().endswith((".ttf", ".otf")):
                     candidates.append(os.path.join(static_fonts, name))
         
-        # System fonts
+        # System fonts with good Polish support - Ubuntu prioritized
         system_font_paths = [
+            # Ubuntu fonts (worked well via SSH)
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf",
+            # DejaVu fonts (excellent Unicode coverage as backup)
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            # Liberation fonts
             "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         ]
         candidates.extend(system_font_paths)
         
-        # Find best match
+        # Test Polish character support
+        def test_polish_support(font_path):
+            try:
+                test_font = ImageFont.truetype(font_path, size)
+                # Create a test image and try to render Polish characters
+                test_img = Image.new("RGB", (50, 20), "white")
+                test_draw = ImageDraw.Draw(test_img)
+                test_draw.text((0, 0), "ąćęłńó", font=test_font, fill="black")
+                return test_font
+            except Exception:
+                return None
+        
+        # Find best match with Polish support
         for prefix in prefixes:
             for path in candidates:
                 if prefix.lower() in os.path.basename(path).lower():
-                    try:
-                        return ImageFont.truetype(path, size)
-                    except (OSError, IOError):
-                        continue
+                    font = test_polish_support(path)
+                    if font:
+                        print(f"Using font with Polish support: {os.path.basename(path)}")
+                        return font
         
-        # Try any available font
+        # Try any available font with Polish support
+        for path in candidates:
+            if os.path.exists(path):
+                font = test_polish_support(path)
+                if font:
+                    print(f"Using fallback font with Polish support: {os.path.basename(path)}")
+                    return font
+        
+        # Last resort: try any font without testing
         for path in candidates:
             try:
                 if os.path.exists(path):
+                    print(f"Using font without Polish test: {os.path.basename(path)}")
                     return ImageFont.truetype(path, size)
             except (OSError, IOError):
                 continue
         
         # Fallback to default font
+        print("Warning: Using default font (limited Polish support)")
         return ImageFont.load_default()
 
     def _wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int):
