@@ -3,6 +3,9 @@ set -euo pipefail
 
 # Pi Zero W setup script for LabelDeck
 
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="$APP_DIR/.venv"
+
 echo "[1/2] Installing system packages (requires sudo)…"
 sudo apt-get update
 sudo apt-get install -y \

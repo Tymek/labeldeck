@@ -17,4 +17,16 @@ Setup for Raspberry Pi Zero
 
 2. Add empty 'ssh' file to the boot directory (optional).
 
-3. Clone this repository `sudo apt-get install -y git && git clone https://github.com/Tymek/labeldeck.git /app`
+3. Clone this repository 
+
+```bash
+sudo apt-get install -y git
+git clone https://github.com/Tymek/labeldeck.git /tmp/app
+sudo mkdir /app && sudo chown -R "$USER:$USER" /app && sudo mv /tmp/app/* /app/ && cd /app
+```
+
+4. Install dependencies
+
+```bash
+./setup.sh
+```
