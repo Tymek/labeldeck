@@ -32,7 +32,12 @@ cd /app
 ./setup.sh
 ```
 
-5. Optionally, adjust environment variables
+5. Configure CUPS for the printer
+```bash
+sudo lpadmin -p dymo450 -E -v "usb://DYMO/LabelWriter%20450%20Turbo?serial=11062409465905" -m "dymo:0/cups/model/lw450t.ppd"
+```
+
+6. Optionally, adjust environment variables
 ```
 PRINTER=your_printer_name
 PILABEL_MEDIA=w102h252  # for 36x89mm labels

@@ -97,7 +97,7 @@ class LabelRenderer:
                 lines.append(line)
         return lines
 
-    def render_name_label(self, name: str, font_size: int = 48):
+    def render_name_label(self, name: str, font_size: int = 144):
         """Render a name label."""
         font = self._find_font(["ubuntu", "dejavu"], font_size)
         
@@ -132,7 +132,7 @@ class LabelRenderer:
     def _add_timestamp(self):
         """Add timestamp to the label."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        font = self._find_font(["b612", "dejavu"], 16)
+        font = self._find_font(["b612", "dejavu"], 32)
         
         # Position in bottom right
         bbox = self.draw.textbbox((0, 0), timestamp, font=font)
