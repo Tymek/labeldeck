@@ -10,38 +10,11 @@
 ---
 Total: ~600zł
 
-Build for Raspberry Pi
+Setup for Raspberry Pi Zero
 -----------------------
 
-### Cross-compile
+1. Install base image on SD card. "PI Imager" app is the recommended way. Pick Raspberry Pi OS **Lite** (32-bit) as the base image. Better customize config now, but you can do it later with `sudo raspi-config`.
 
-#### Check Pi Architecture
-```bash
-# On your Pi, check which architecture to build for:
-uname -m
-# armv6l, armv7l → use linux/arm/v7
-# aarch64 → use linux/arm64
-```
+2. Add empty 'ssh' file to the boot directory (optional).
 
-#### Build – **For Raspberry Pi Zero (32-bit ARM):**
-```bash
-docker buildx build \
-  --platform linux/arm/v7 \
-  --tag registry.scrlk.pl/labeldeck:latest \
-  --push .
-
-# Deploy and Run on Pi
-docker pull registry.scrlk.pl/labeldeck:latest
-docker run -d --name labeldeck -v $(pwd)/app:/app registry.scrlk.pl/labeldeck:latest
-# TODO: pull repository
-```
-
-### Alternative: **Save/load image file (no registry needed):**
-```bash
-docker buildx build --platform linux/arm64 -t labeldeck:latest --output type=docker,dest=labeldeck-pi.tar .
-
-scp labeldeck-pi.tar pi@raspberrypi.local:~/
-
-docker load < labeldeck-pi.tar
-docker run -d --name labeldeck -v $(pwd)/app:/app labeldeck:latest
-```
+3. Clone this repository `sudo apt-get install -y git && git clone https://github.com/Tymek/labeldeck.git /app`
