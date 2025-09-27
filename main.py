@@ -356,6 +356,35 @@ class LabelPrinterApp:
             
         return name.strip()
 
+    def wait_for_enter_or_cancel(self) -> bool:
+        """Wait for Enter key. Returns True if Enter pressed, False for any other key or Ctrl+C."""
+        try:
+            # Save original terminal settings
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            
+            # Set terminal to raw mode for character input
+            tty.setraw(fd)
+            
+            # Read single character
+            char = sys.stdin.read(1)
+            
+            # Check if it's Enter (CR or LF)
+            if ord(char) == 13 or ord(char) == 10:
+                return True
+            else:
+                # Any other key cancels
+                return False
+                
+        except (KeyboardInterrupt, OSError, AttributeError):
+            return False
+        finally:
+            # Restore original terminal settings
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except:
+                pass
+
     def preview_on_oled(self, name: str):
         """Preview the name on OLED display with larger text."""
         if self.oled and self.oled.is_available():
@@ -366,8 +395,8 @@ class LabelPrinterApp:
             if canvas:
                 # Use canvas to draw everything at once to prevent blinking
                 with canvas(self.oled.device) as draw:
-                    # Truncate name if too long for display
-                    display_name = name[:8] if len(name) > 8 else name
+                    # Show full name, allow overflow to the right
+                    display_name = name
                     
                     # Draw preview text with extra large font
                     font = self.oled.font_xlarge
@@ -375,16 +404,15 @@ class LabelPrinterApp:
                     
                     # Draw instruction at bottom with small font
                     small_font = self.oled.font_small
-                    draw.text((0, 22), "Press Enter", font=small_font, fill="white")
+                    draw.text((0, 22), "Enter=print", font=small_font, fill="white")
             else:
                 # Fallback to individual display calls
-                display_name = name[:8] if len(name) > 8 else name
-                self.oled.display_text(display_name, x=0, y=4, font_size="xlarge")
+                self.oled.display_text(name, x=0, y=4, font_size="xlarge")
                 time.sleep(0.05)
-                self.oled.display_text("Press Enter", x=0, y=22, font_size="small")
+                self.oled.display_text("Enter=print", x=0, y=22, font_size="small")
         else:
             print(f"Preview: {name}")
-            print("Press Enter to print 2 copies")
+            print("Press Enter to print, other key to cancel")
 
     def run_interactive_loop(self):
         """Run the main interactive loop."""
@@ -407,13 +435,11 @@ class LabelPrinterApp:
                 # Show preview
                 self.preview_on_oled(name)
                 
-                # Wait for Enter to print
+                # Wait for Enter to print, any other key to cancel
                 print(f"Preview: '{name}'")
-                print("Press Enter to print 2 copies (or Ctrl+C to cancel):")
+                print("Press Enter to print 2 copies, any other key to cancel:")
                 
-                try:
-                    input()  # Wait for Enter
-                except KeyboardInterrupt:
+                if not self.wait_for_enter_or_cancel():
                     self.display_message("Cancelled", "Back to main menu")
                     time.sleep(1)
                     continue
