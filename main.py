@@ -18,10 +18,12 @@ import tty
 # Try to import OLED display functionality
 try:
     from oled_display import initialize_oled, get_oled
+    from luma.core.render import canvas
     OLED_AVAILABLE = True
 except ImportError as e:
     print(f"OLED display not available: {e}")
     OLED_AVAILABLE = False
+    canvas = None
 
 
 class LabelRenderer:
@@ -293,8 +295,20 @@ class LabelPrinterApp:
             while True:
                 # Update display with current input
                 if self.oled and self.oled.is_available():
-                    # Show "Enter name:" at top and current input larger below
-                    self.oled.display_status("Enter name:", name if name else "_", "")
+                    # Use canvas for smoother display updates
+                    if canvas:
+                        with canvas(self.oled.device) as draw:
+                            # Title at top
+                            draw.text((0, 0), "Enter name:", font=self.oled.font_small, fill="white")
+                            # Current input in large font
+                            display_text = name if name else "_"
+                            draw.text((0, 12), display_text, font=self.oled.font_large, fill="white")
+                    else:
+                        # Fallback to individual calls
+                        self.oled.clear()
+                        self.oled.display_text("Enter name:", x=0, y=0, font_size="small")
+                        display_text = name if name else "_"
+                        self.oled.display_text(display_text, x=0, y=12, font_size="large")
                 else:
                     # Clear line and show current input
                     print(f"\rEnter name: {name}_", end="", flush=True)
@@ -345,13 +359,29 @@ class LabelPrinterApp:
     def preview_on_oled(self, name: str):
         """Preview the name on OLED display with larger text."""
         if self.oled and self.oled.is_available():
-            # Clear display and show preview with extra large font
+            # Clear display first
             self.oled.clear()
-            # Truncate name if too long for display
-            display_name = name[:10] if len(name) > 10 else name
-            self.oled.display_text(display_name, x=0, y=4, font_size="xlarge")
-            # Show instruction at bottom
-            self.oled.display_text("Press Enter", x=0, y=22, font_size="small")
+            time.sleep(0.1)  # Small delay to ensure clear completes
+            
+            if canvas:
+                # Use canvas to draw everything at once to prevent blinking
+                with canvas(self.oled.device) as draw:
+                    # Truncate name if too long for display
+                    display_name = name[:8] if len(name) > 8 else name
+                    
+                    # Draw preview text with extra large font
+                    font = self.oled.font_xlarge
+                    draw.text((0, 4), display_name, font=font, fill="white")
+                    
+                    # Draw instruction at bottom with small font
+                    small_font = self.oled.font_small
+                    draw.text((0, 22), "Press Enter", font=small_font, fill="white")
+            else:
+                # Fallback to individual display calls
+                display_name = name[:8] if len(name) > 8 else name
+                self.oled.display_text(display_name, x=0, y=4, font_size="xlarge")
+                time.sleep(0.05)
+                self.oled.display_text("Press Enter", x=0, y=22, font_size="small")
         else:
             print(f"Preview: {name}")
             print("Press Enter to print 2 copies")
