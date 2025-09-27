@@ -14,6 +14,7 @@ from typing import Optional
 import io
 import termios
 import tty
+import locale
 
 # Try to import OLED display functionality
 try:
@@ -278,10 +279,20 @@ class LabelPrinterApp:
                 print(f"  {info}")
 
     def get_name_input(self) -> str:
-        """Get name input from user with real-time display."""
+        """Get name input from user with real-time display, supporting Polish characters."""
         self.display_message("Enter name:", "", "")
         
         name = ""
+        
+        # Ensure UTF-8 encoding
+        import locale
+        try:
+            locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+        except locale.Error:
+            try:
+                locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+            except locale.Error:
+                pass  # Use system default
         
         # Try character-by-character input, fallback to regular input
         try:
@@ -313,18 +324,69 @@ class LabelPrinterApp:
                     # Clear line and show current input
                     print(f"\rEnter name: {name}_", end="", flush=True)
                 
-                # Read single character
-                char = sys.stdin.read(1)
-                
-                if ord(char) == 13 or ord(char) == 10:  # Enter key
-                    break
-                elif ord(char) == 127 or ord(char) == 8:  # Backspace
-                    if name:
-                        name = name[:-1]
-                elif ord(char) == 3:  # Ctrl+C
-                    raise KeyboardInterrupt
-                elif ord(char) >= 32 and ord(char) <= 126:  # Printable characters
-                    name += char
+                # Read single character or UTF-8 sequence
+                try:
+                    # Read first byte
+                    char = sys.stdin.read(1)
+                    if not char:
+                        continue
+                        
+                    # Handle special keys first
+                    char_code = ord(char)
+                    if char_code == 13 or char_code == 10:  # Enter key
+                        break
+                    elif char_code == 127 or char_code == 8:  # Backspace
+                        if name:
+                            # Handle UTF-8 characters properly when backspacing
+                            try:
+                                name = name[:-1]
+                                # If we get a decode error, we might have cut in middle of UTF-8 char
+                                name.encode('utf-8')
+                            except UnicodeEncodeError:
+                                # Cut one more character to get to valid UTF-8 boundary
+                                if name:
+                                    name = name[:-1]
+                        continue
+                    elif char_code == 3:  # Ctrl+C
+                        raise KeyboardInterrupt
+                    
+                    # Handle UTF-8 multi-byte characters
+                    if char_code < 128:
+                        # ASCII character
+                        if char_code >= 32:  # Printable ASCII
+                            name += char
+                    else:
+                        # Multi-byte UTF-8 character
+                        # Determine how many bytes we need to read
+                        if char_code < 0xC0:
+                            # Invalid UTF-8 start byte, skip
+                            continue
+                        elif char_code < 0xE0:
+                            # 2-byte sequence
+                            char += sys.stdin.read(1)
+                        elif char_code < 0xF0:
+                            # 3-byte sequence (covers most Polish characters)
+                            char += sys.stdin.read(2)
+                        elif char_code < 0xF8:
+                            # 4-byte sequence
+                            char += sys.stdin.read(3)
+                        else:
+                            # Invalid, skip
+                            continue
+                        
+                        # Try to decode the UTF-8 sequence
+                        try:
+                            decoded_char = char.decode('utf-8')
+                            # Add the character if it's printable
+                            if decoded_char.isprintable():
+                                name += decoded_char
+                        except UnicodeDecodeError:
+                            # Skip invalid UTF-8 sequences
+                            continue
+                            
+                except (UnicodeDecodeError, IndexError):
+                    # Handle any encoding issues gracefully
+                    continue
                     
         except (KeyboardInterrupt, OSError, AttributeError):
             # Fallback to regular input if terminal control fails
