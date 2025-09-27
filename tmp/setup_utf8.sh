@@ -8,8 +8,8 @@ echo "1. Configuring locales..."
 sudo dpkg-reconfigure locales --frontend=noninteractive || true
 
 # Generate required locales
-sudo locale-gen en_US.UTF-8
-sudo locale-gen pl_PL.UTF-8
+# sudo locale-gen en_US.UTF-8
+# sudo locale-gen pl_PL.UTF-8
 
 # 2. Set system-wide locale
 echo "2. Setting system locale..."

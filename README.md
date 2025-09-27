@@ -43,3 +43,15 @@ PRINTER=your_printer_name
 PILABEL_MEDIA=w102h252  # for 36x89mm labels
 OLED_I2C_ADDRESS=0x3c   # OLED I2C address (default: 0x3c)
 ```
+
+7. Setup keyboard / language
+
+```bash
+sudo tee /etc/default/keyboard >/dev/null <<'EOF'
+XKBMODEL="pc105"
+XKBLAYOUT="pl"
+XKBVARIANT="programmer"        # or leave empty for standard
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+```

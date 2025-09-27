@@ -29,11 +29,11 @@ class OLEDDisplay:
             # Create device (128x32 OLED)
             self.device = ssd1306(serial, width=128, height=32)
             
-            # Load fonts
-            self.font_small = self._load_font(size=8)
-            self.font_medium = self._load_font(size=10)
-            self.font_large = self._load_font(size=12)
-            self.font_xlarge = self._load_font(size=16)  # Extra large for preview
+            # Load fonts - use readable fonts for prompts, Ubuntu for preview
+            self.font_small = self._load_readable_font(size=8)
+            self.font_medium = self._load_readable_font(size=10)
+            self.font_large = self._load_readable_font(size=12)
+            self.font_xlarge = self._load_ubuntu_font(size=16)  # Ubuntu for preview
             
             self.width = 128
             self.height = 32
@@ -44,63 +44,92 @@ class OLEDDisplay:
             print(f"Failed to initialize OLED display: {e}")
             self.device = None
     
-    def _load_font(self, size: int = 10) -> ImageFont.FreeTypeFont:
-        """Load a font for the display with Polish character support."""
+    def _load_readable_font(self, size: int = 10) -> ImageFont.FreeTypeFont:
+        """Load a readable font for prompts and UI text."""
         try:
-            # Priority order: Ubuntu fonts first since they worked via SSH
+            # Priority: readable monospace fonts for UI
             font_paths = [
-                # Project bundled fonts (check these first)
-                "static/fonts/Ubuntu-MediumItalic.ttf",
+                # Monospace fonts for better readability on small OLED
                 "static/fonts/B612Mono-Regular.ttf",
-                # Ubuntu system fonts (prioritized since they worked)
-                "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-                "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
-                "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf",
-                # DejaVu fonts (good Unicode support as backup)
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                # Liberation fonts (good fallback)
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
                 "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-                # More fallbacks
-                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-                "/System/Library/Fonts/Arial.ttf",  # macOS
-                "/Windows/Fonts/arial.ttf",  # Windows
+                # Regular fonts as backup
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                # Project fonts
+                "static/fonts/Ubuntu-MediumItalic.ttf",
             ]
             
             for path in font_paths:
                 try:
                     if os.path.exists(path):
                         font = ImageFont.truetype(path, size)
-                        # Test if font supports Polish characters
-                        test_chars = "ąćęłńóśźż"
+                        print(f"Using readable font: {os.path.basename(path)}")
+                        return font
+                except (OSError, IOError):
+                    continue
+            
+            print("Using PIL default font for readability")
+            return ImageFont.load_default()
+            
+        except Exception:
+            return ImageFont.load_default()
+
+    def _load_ubuntu_font(self, size: int = 16) -> ImageFont.FreeTypeFont:
+        """Load Ubuntu font specifically for preview (Polish character support)."""
+        try:
+            # Ubuntu fonts first - these work with Polish characters
+            font_paths = [
+                "static/fonts/Ubuntu-MediumItalic.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf",
+                # Fallback to DejaVu if Ubuntu not available
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ]
+            
+            for path in font_paths:
+                try:
+                    if os.path.exists(path):
+                        font = ImageFont.truetype(path, size)
+                        # Test Polish character support
+                        test_chars = "ąćęłńó"
                         try:
-                            # Try to render Polish characters to verify support
                             from PIL import Image, ImageDraw
                             test_img = Image.new("RGB", (10, 10), "white")
                             test_draw = ImageDraw.Draw(test_img)
                             test_draw.text((0, 0), test_chars, font=font, fill="black")
-                            print(f"Using font: {os.path.basename(path)} (supports Polish)")
+                            print(f"Using Ubuntu font for preview: {os.path.basename(path)}")
                             return font
                         except Exception:
-                            # Font doesn't support these characters, try next
                             continue
                 except (OSError, IOError):
                     continue
             
-            # If no font with Polish support found, try any available font
-            print("Warning: No font with Polish character support found, using fallback")
+            print("Warning: No Ubuntu font found, using fallback for preview")
+            return ImageFont.load_default()
+            
+        except Exception:
+            return ImageFont.load_default()
+
+    def _load_font(self, size: int = 10) -> ImageFont.FreeTypeFont:
+        """Load a basic font (legacy method)."""
+        try:
+            font_paths = [
+                "static/fonts/B612Mono-Regular.ttf",
+                "static/fonts/Ubuntu-MediumItalic.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf"
+            ]
+            
             for path in font_paths:
                 try:
                     if os.path.exists(path):
-                        print(f"Using fallback font: {os.path.basename(path)}")
                         return ImageFont.truetype(path, size)
                 except (OSError, IOError):
                     continue
             
-            # Fallback to default font
-            print("Using PIL default font (limited character support)")
             return ImageFont.load_default()
             
         except Exception:
