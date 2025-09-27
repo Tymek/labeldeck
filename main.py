@@ -12,6 +12,8 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from typing import Optional
 import io
+import termios
+import tty
 
 # Try to import OLED display functionality
 try:
@@ -274,19 +276,82 @@ class LabelPrinterApp:
                 print(f"  {info}")
 
     def get_name_input(self) -> str:
-        """Get name input from user."""
-        self.display_message("Enter name:", "Type name and", "press Enter:")
+        """Get name input from user with real-time display."""
+        self.display_message("Enter name:", "", "")
         
+        name = ""
+        
+        # Try character-by-character input, fallback to regular input
         try:
-            name = input().strip()
-            return name
-        except (EOFError, KeyboardInterrupt):
-            return ""
+            # Save original terminal settings
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            
+            # Set terminal to raw mode for character input
+            tty.setraw(fd)
+            
+            while True:
+                # Update display with current input
+                if self.oled and self.oled.is_available():
+                    # Show "Enter name:" at top and current input larger below
+                    self.oled.display_status("Enter name:", name if name else "_", "")
+                else:
+                    # Clear line and show current input
+                    print(f"\rEnter name: {name}_", end="", flush=True)
+                
+                # Read single character
+                char = sys.stdin.read(1)
+                
+                if ord(char) == 13 or ord(char) == 10:  # Enter key
+                    break
+                elif ord(char) == 127 or ord(char) == 8:  # Backspace
+                    if name:
+                        name = name[:-1]
+                elif ord(char) == 3:  # Ctrl+C
+                    raise KeyboardInterrupt
+                elif ord(char) >= 32 and ord(char) <= 126:  # Printable characters
+                    name += char
+                    
+        except (KeyboardInterrupt, OSError, AttributeError):
+            # Fallback to regular input if terminal control fails
+            try:
+                # Restore terminal settings if possible
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except:
+                pass
+            
+            if isinstance(sys.exc_info()[1], KeyboardInterrupt):
+                name = ""
+            else:
+                # Use regular input as fallback
+                print("\nUsing standard input mode:")
+                try:
+                    name = input("Enter name: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    name = ""
+        finally:
+            # Restore original terminal settings
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except:
+                pass
+            
+        # Clear the line in console output
+        if not (self.oled and self.oled.is_available()):
+            print()  # New line
+            
+        return name.strip()
 
     def preview_on_oled(self, name: str):
-        """Preview the name on OLED display."""
+        """Preview the name on OLED display with larger text."""
         if self.oled and self.oled.is_available():
-            self.display_status("Preview:", name, "Press Enter to print")
+            # Clear display and show preview with extra large font
+            self.oled.clear()
+            # Truncate name if too long for display
+            display_name = name[:10] if len(name) > 10 else name
+            self.oled.display_text(display_name, x=0, y=4, font_size="xlarge")
+            # Show instruction at bottom
+            self.oled.display_text("Press Enter", x=0, y=22, font_size="small")
         else:
             print(f"Preview: {name}")
             print("Press Enter to print 2 copies")

@@ -33,6 +33,7 @@ class OLEDDisplay:
             self.font_small = self._load_font(size=8)
             self.font_medium = self._load_font(size=10)
             self.font_large = self._load_font(size=12)
+            self.font_xlarge = self._load_font(size=16)  # Extra large for preview
             
             self.width = 128
             self.height = 32
@@ -86,7 +87,7 @@ class OLEDDisplay:
         Args:
             text: Text to display
             x, y: Position coordinates
-            font_size: "small", "medium", or "large"
+            font_size: "small", "medium", "large", or "xlarge"
         """
         if not self.is_available():
             print(f"OLED not available, would display: {text}")
@@ -95,7 +96,8 @@ class OLEDDisplay:
         font = {
             "small": self.font_small,
             "medium": self.font_medium,
-            "large": self.font_large
+            "large": self.font_large,
+            "xlarge": self.font_xlarge
         }.get(font_size, self.font_medium)
         
         with canvas(self.device) as draw:
@@ -107,7 +109,7 @@ class OLEDDisplay:
         
         Args:
             lines: List of text lines
-            font_size: "small", "medium", or "large"
+            font_size: "small", "medium", "large", or "xlarge"
         """
         if not self.is_available():
             print(f"OLED not available, would display: {lines}")
@@ -116,11 +118,12 @@ class OLEDDisplay:
         font = {
             "small": self.font_small,
             "medium": self.font_medium,
-            "large": self.font_large
+            "large": self.font_large,
+            "xlarge": self.font_xlarge
         }.get(font_size, self.font_small)
         
         with canvas(self.device) as draw:
-            line_height = 10 if font_size == "small" else 12 if font_size == "medium" else 14
+            line_height = 10 if font_size == "small" else 12 if font_size == "medium" else 14 if font_size == "large" else 18
             
             for i, line in enumerate(lines[:4]):  # Max 4 lines for 32px height
                 y = i * line_height
