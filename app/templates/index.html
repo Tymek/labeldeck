@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>Label</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <form>
+        <div class="control-grid">
+          <label class="full">
+            Imię
+            <textarea name="text" rows="4" placeholder="...">{{ text }}</textarea>
+          </label>
+          <label>
+            Rozmiar czcionki
+            <input name="size" type="number" min="12" max="240" step="2" value="{{ size or 144 }}"/>
+          </label>
+          <!-- Hidden for now: font picker
+          <label>
+            Font
+            <select name="font"></select>
+          </label>
+          -->
+          <div class="buttons">
+            <!-- if no js -->
+            <noscript>
+              <button type="submit" class="btn" formaction="/" formmethod="get">Podgląd</button>
+            </noscript>
+            <button id="btn-print" type="submit" class="btn primary" formaction="/print" formmethod="post">Wydruk</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Preview</h2>
+      <img id="preview" alt="Label preview" src="{{ preview_url }}"/>
+    </section>
+
+  </main>
+  <script>
+    (function(){
+      var textEl = document.querySelector('textarea[name="text"]');
+      var sizeEl = document.querySelector('input[name="size"]');
+      var img = document.getElementById('preview');
+      if (!textEl || !sizeEl || !img) return;
+      var min = parseInt(sizeEl.getAttribute('min') || '12', 10);
+      var max = parseInt(sizeEl.getAttribute('max') || '240', 10);
+      var timer = null;
+      function clamp(n){ n = parseInt(n || '144', 10); if (isNaN(n)) n = 144; return Math.min(max, Math.max(min, n)); }
+      function buildUrl(){
+        var size = clamp(sizeEl.value);
+        var txt = encodeURIComponent(textEl.value || '');
+        return '/api/preview/' + size + '/?text=' + txt + '&_=' + Date.now();
+      }
+      function schedule(){
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function(){ img.src = buildUrl(); }, 333);
+      }
+      textEl.addEventListener('input', schedule);
+      sizeEl.addEventListener('input', schedule);
+      textEl.addEventListener('change', schedule);
+      sizeEl.addEventListener('change', schedule);
+    })();
+  </script>
+</body>
+</html>

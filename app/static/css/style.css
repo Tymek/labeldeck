@@ -1,0 +1,129 @@
+:root {
+  --bg: #0b0f19;
+  --card: #111827;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --primary: #c193f7;
+  --secondary: #fe1f68;
+  --accent: #94d000;
+  --neutral: #00bcdf;
+  --btn: #1f2937;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+    Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+.container {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 16px;
+}
+h1 {
+  font-size: 1.75rem;
+  margin: 8px 0 16px;
+}
+h2 {
+  font-size: 1.25rem;
+  margin: 0 0 8px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.control-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.control-grid .full {
+  grid-column: 1/-1;
+}
+input,
+textarea,
+select {
+  background: #0b1220;
+  border: 1px solid #263043;
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  width: 100%;
+}
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9ca3af 50%),
+    linear-gradient(135deg, #9ca3af 50%, transparent 50%),
+    linear-gradient(#263043, #263043);
+  background-position: calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px), calc(100% - 2.2em) 50%;
+  background-size: 6px 6px, 6px 6px, 1px 2.2em;
+  background-repeat: no-repeat;
+  padding-right: 2.6em;
+}
+textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+.btn {
+  background: var(--btn);
+  /* color: var(--text); */
+  color: #031217;
+  font-weight: bold;
+  border: 1px solid #374151;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: var(--accent);
+}
+.btn:hover {
+  border-color: #475569;
+}
+.btn.primary {
+  /* background: linear-gradient(135deg, var(--btnp), var(--accent)); */
+  background: var(--secondary);
+  /* color: #031217; */
+  /* color: white; */
+  border: none;
+  flex-grow: 1;
+}
+img#preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #263043;
+  background: #0b1220;
+}
+.muted {
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .control-grid {
+    grid-template-columns: 1fr;
+  }
+}
