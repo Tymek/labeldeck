@@ -279,144 +279,28 @@ class LabelPrinterApp:
                 print(f"  {info}")
 
     def get_name_input(self) -> str:
-        """Get name input from user with real-time display, supporting Polish characters."""
-        self.display_message("Enter name:", "", "")
+        """Get name input from user, supporting Polish characters."""
+        # Simple approach: use standard input which properly handles UTF-8
+        self.display_message("Enter name:", "Type and press Enter", "")
         
-        name = ""
-        
-        # Ensure UTF-8 encoding
-        import locale
         try:
-            locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
-        except locale.Error:
-            try:
-                locale.setlocale(locale.LC_ALL, 'C.UTF-8')
-            except locale.Error:
-                pass  # Use system default
-        
-        # Try character-by-character input, fallback to regular input
-        try:
-            # Save original terminal settings
-            fd = sys.stdin.fileno()
-            old_settings = termios.tcgetattr(fd)
+            name = input("Enter name: ")
             
-            # Set terminal to raw mode for character input
-            tty.setraw(fd)
-            
-            while True:
-                # Update display with current input
-                if self.oled and self.oled.is_available():
-                    # Use canvas for smoother display updates
-                    if canvas:
-                        with canvas(self.oled.device) as draw:
-                            # Title at top
-                            draw.text((0, 0), "Enter name:", font=self.oled.font_small, fill="white")
-                            # Current input in large font
-                            display_text = name if name else "_"
-                            draw.text((0, 12), display_text, font=self.oled.font_large, fill="white")
-                    else:
-                        # Fallback to individual calls
-                        self.oled.clear()
-                        self.oled.display_text("Enter name:", x=0, y=0, font_size="small")
-                        display_text = name if name else "_"
-                        self.oled.display_text(display_text, x=0, y=12, font_size="large")
+            # Update OLED with final input
+            if self.oled and self.oled.is_available():
+                if canvas:
+                    with canvas(self.oled.device) as draw:
+                        draw.text((0, 0), "Name entered:", font=self.oled.font_small, fill="white")
+                        draw.text((0, 12), name if name else "None", font=self.oled.font_large, fill="white")
                 else:
-                    # Clear line and show current input
-                    print(f"\rEnter name: {name}_", end="", flush=True)
-                
-                # Read single character or UTF-8 sequence
-                try:
-                    # Read first byte
-                    char = sys.stdin.read(1)
-                    if not char:
-                        continue
-                        
-                    # Handle special keys first
-                    char_code = ord(char)
-                    if char_code == 13 or char_code == 10:  # Enter key
-                        break
-                    elif char_code == 127 or char_code == 8:  # Backspace
-                        if name:
-                            # Handle UTF-8 characters properly when backspacing
-                            try:
-                                name = name[:-1]
-                                # If we get a decode error, we might have cut in middle of UTF-8 char
-                                name.encode('utf-8')
-                            except UnicodeEncodeError:
-                                # Cut one more character to get to valid UTF-8 boundary
-                                if name:
-                                    name = name[:-1]
-                        continue
-                    elif char_code == 3:  # Ctrl+C
-                        raise KeyboardInterrupt
-                    
-                    # Handle UTF-8 multi-byte characters
-                    if char_code < 128:
-                        # ASCII character
-                        if char_code >= 32:  # Printable ASCII
-                            name += char
-                    else:
-                        # Multi-byte UTF-8 character
-                        # Determine how many bytes we need to read
-                        if char_code < 0xC0:
-                            # Invalid UTF-8 start byte, skip
-                            continue
-                        elif char_code < 0xE0:
-                            # 2-byte sequence
-                            char += sys.stdin.read(1)
-                        elif char_code < 0xF0:
-                            # 3-byte sequence (covers most Polish characters)
-                            char += sys.stdin.read(2)
-                        elif char_code < 0xF8:
-                            # 4-byte sequence
-                            char += sys.stdin.read(3)
-                        else:
-                            # Invalid, skip
-                            continue
-                        
-                        # Try to decode the UTF-8 sequence
-                        try:
-                            decoded_char = char.decode('utf-8')
-                            # Add the character if it's printable
-                            if decoded_char.isprintable():
-                                name += decoded_char
-                        except UnicodeDecodeError:
-                            # Skip invalid UTF-8 sequences
-                            continue
-                            
-                except (UnicodeDecodeError, IndexError):
-                    # Handle any encoding issues gracefully
-                    continue
-                    
-        except (KeyboardInterrupt, OSError, AttributeError):
-            # Fallback to regular input if terminal control fails
-            try:
-                # Restore terminal settings if possible
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            except:
-                pass
+                    self.oled.clear()
+                    self.oled.display_text("Name entered:", x=0, y=0, font_size="small")
+                    self.oled.display_text(name if name else "None", x=0, y=12, font_size="large")
             
-            if isinstance(sys.exc_info()[1], KeyboardInterrupt):
-                name = ""
-            else:
-                # Use regular input as fallback
-                print("\nUsing standard input mode:")
-                try:
-                    name = input("Enter name: ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    name = ""
-        finally:
-            # Restore original terminal settings
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            except:
-                pass
+            return name.strip()
             
-        # Clear the line in console output
-        if not (self.oled and self.oled.is_available()):
-            print()  # New line
-            
-        return name.strip()
+        except (EOFError, KeyboardInterrupt):
+            return ""
 
     def wait_for_enter_or_cancel(self) -> bool:
         """Wait for Enter key. Returns True if Enter pressed, False for any other key or Ctrl+C."""
