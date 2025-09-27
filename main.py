@@ -280,23 +280,11 @@ class LabelPrinterApp:
 
     def get_name_input(self) -> str:
         """Get name input from user, supporting Polish characters."""
-        # Simple approach: use standard input which properly handles UTF-8
         self.display_message("Enter name:", "Type and press Enter", "")
         
+        # Simple, reliable approach for Raspberry Pi
         try:
             name = input("Enter name: ")
-            
-            # Update OLED with final input
-            if self.oled and self.oled.is_available():
-                if canvas:
-                    with canvas(self.oled.device) as draw:
-                        draw.text((0, 0), "Name entered:", font=self.oled.font_small, fill="white")
-                        draw.text((0, 12), name if name else "None", font=self.oled.font_large, fill="white")
-                else:
-                    self.oled.clear()
-                    self.oled.display_text("Name entered:", x=0, y=0, font_size="small")
-                    self.oled.display_text(name if name else "None", x=0, y=12, font_size="large")
-            
             return name.strip()
             
         except (EOFError, KeyboardInterrupt):
