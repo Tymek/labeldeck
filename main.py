@@ -15,6 +15,7 @@ import io
 import termios
 import tty
 import locale
+import select
 
 # Try to import OLED display functionality
 try:
@@ -308,16 +309,70 @@ class LabelPrinterApp:
                 print(f"  {info}")
 
     def get_name_input(self) -> str:
-        """Get name input from user, supporting Polish characters."""
-        self.display_message("Enter name:", "Type and press Enter", "")
+        """Get name input with live typing display, supporting Polish characters."""
+        import select
+        import sys
         
-        # Simple, reliable approach for Raspberry Pi
+        self.display_message("Enter name:", "", "")
+        name = ""
+        
+        # Try character-by-character input with live display
         try:
-            name = input("Enter name: ")
-            return name.strip()
+            # Set terminal to cbreak mode (better than raw for UTF-8)
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
             
-        except (EOFError, KeyboardInterrupt):
-            return ""
+            print("Enter name: ", end="", flush=True)
+            
+            while True:
+                # Update OLED display with current input
+                if self.oled and self.oled.is_available():
+                    if canvas:
+                        with canvas(self.oled.device) as draw:
+                            # Title in readable font
+                            draw.text((0, 0), "Enter name:", font=self.oled.font_small, fill="white")
+                            # Current input in readable font (not preview size yet)
+                            display_text = name if name else "_"
+                            draw.text((0, 12), display_text, font=self.oled.font_large, fill="white")
+                
+                # Check if input is available (non-blocking)
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    # Read character
+                    char = sys.stdin.read(1)
+                    
+                    if char in ['\n', '\r']:  # Enter
+                        break
+                    elif char in ['\x7f', '\x08']:  # Backspace
+                        if name:
+                            name = name[:-1]
+                            # Update console display
+                            print('\b \b', end='', flush=True)
+                    elif char == '\x03':  # Ctrl+C
+                        raise KeyboardInterrupt
+                    elif char.isprintable():  # Any printable character (including Polish)
+                        name += char
+                        # Update console display
+                        print(char, end='', flush=True)
+        
+        except (KeyboardInterrupt, OSError, AttributeError):
+            # Fallback to regular input if terminal control fails
+            print("\nFalling back to regular input:")
+            try:
+                name = input("Enter name: ")
+            except (EOFError, KeyboardInterrupt):
+                name = ""
+        finally:
+            # Restore terminal settings
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except:
+                pass
+            
+            # New line after input
+            print()
+        
+        return name.strip()
 
     def wait_for_enter_or_cancel(self) -> bool:
         """Wait for Enter key. Returns True if Enter pressed, False for any other key or Ctrl+C."""
